@@ -1,0 +1,65 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: traefik-ingress-controller
+  namespace: default
+  labels:
+    k8s-app: traefik-ingress-lb
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      k8s-app: traefik-ingress-lb
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        k8s-app: traefik-ingress-lb
+        name: traefik-ingress-lb
+    spec:
+      serviceAccountName: traefik-ingress-controller
+
+      volumes:
+      - name: config
+        configMap:
+          name: traefik-conf
+      - name: watched
+        emptyDir:
+
+      initContainers:
+      - name: touch-rules
+        image: bitnami/kubectl:1.21.2
+        volumeMounts:
+        - mountPath: "/watched"
+          name: "watched"
+        command:
+        - "/bin/bash"
+        - -c
+        args:
+        - touch /watched/rules.toml
+
+      containers:
+      - image: docker.io/traefik:v1.7.30
+        name: traefik-ingress-lb
+        volumeMounts:
+        - mountPath: "/config"
+          name: "config"
+        - mountPath: "/watched"
+          name: "watched"
+        ports:
+        - containerPort: 8080
+        - containerPort: 8099
+        args:
+        - --web
+        - --configfile=/config/traefik.toml
+
+      - image: quay.io/erdii/configmap-puller:0.0.2
+        name: configmap-puller
+        volumeMounts:
+        - mountPath: "/watched"
+          name: "watched"
+        args:
+        - -outfile-name=/watched/rules.toml
+        - -configmap-name=traefik-rules
+        - -configmap-key=rules.toml
