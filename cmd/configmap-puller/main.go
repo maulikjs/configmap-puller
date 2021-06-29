@@ -33,13 +33,21 @@ var (
 )
 
 func main() {
+	fmt.Println(os.Args)
+
 	kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	configmapName = flag.String("configmap-name", "traefik-config", "name of the configmap to watch")
+	configmapName = flag.String("configmap-name", "traefik-rules", "name of the configmap to watch")
 	configmapNamespace = flag.String("configmap-namespace", "default", "namespace of the configmap to watch")
 	configmapKey = flag.String("configmap-key", "rules.toml", "key of the configmap to read")
-	outfileName = flag.String("outfile-name", "/watched/rules.toml", "name of the file to write")
+	outfileName = flag.String("outfile-name", "/tmp/rules.toml", "name of the file to write")
 
 	flag.Parse()
+
+	fmt.Println("kubeconfig", *kubeconfig)
+	fmt.Println("configmapName", *configmapName)
+	fmt.Println("configmapNamespace", *configmapNamespace)
+	fmt.Println("configmapKey", *configmapKey)
+	fmt.Println("outfileName", *outfileName)
 
 	// load config depending if we are outside or inside a cluster
 	var config *rest.Config
@@ -66,6 +74,11 @@ func main() {
 	namespace := *configmapNamespace
 	name := *configmapName
 
+	run(clientset, name, namespace)
+}
+
+func run(clientset *kubernetes.Clientset, name, namespace string) {
+	var previousData string
 	for {
 		cm, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 		if errors.IsNotFound(err) {
@@ -79,21 +92,26 @@ func main() {
 
 		fmt.Printf("Found configmap %s in namespace %s\n", name, namespace)
 		data := cm.Data[*configmapKey]
-		fmt.Printf("Data: %+v", data)
+		fmt.Printf("Data: %s\n", data)
 
-		// TODO: only write if content changed)
-		if err := writeStringFile(*outfileName, data); err != nil {
-			panic(err)
+		// skip iteration if nothing changed
+		if data != previousData {
+			if err := writeFile(*outfileName, data); err != nil {
+				panic(err)
+			}
+
+			fmt.Println("Wrote data to file", *outfileName)
+		} else {
+			fmt.Println("nothing changed - not writing file")
 		}
 
-		fmt.Println("Wrote data to file", *outfileName)
-
+		previousData = data
 		time.Sleep(10 * time.Second)
 	}
 }
 
-func writeStringFile(filename, data string) error {
-	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+func writeFile(filename, data string) error {
+	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_TRUNC, 0666)
 	if err != nil {
 		return fmt.Errorf("could not open file for writing: %w", err)
 	}

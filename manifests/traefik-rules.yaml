@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traefik-rules
+  namespace: default
+data:
+  rules.toml: |
+    [backends]
+      [backends.backend1]
+        [backends.backend1.servers.server1]
+        url = "http://example.com"
+        weight = 10
+
+    [frontends]
+      [frontends.frontend1]
+      backend = "backend1"
+      entrypoints = ["http"]

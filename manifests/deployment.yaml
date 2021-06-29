@@ -1,34 +1,34 @@
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: traefik-ingress-controller
+  name: traefik-proxy
   namespace: default
   labels:
-    k8s-app: traefik-ingress-lb
+    k8s-app: traefik-proxy
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
-      k8s-app: traefik-ingress-lb
+      k8s-app: traefik-proxy
   strategy:
     type: RollingUpdate
   template:
     metadata:
       labels:
-        k8s-app: traefik-ingress-lb
-        name: traefik-ingress-lb
+        k8s-app: traefik-proxy
+        name: traefik-proxy
     spec:
-      serviceAccountName: traefik-ingress-controller
+      serviceAccountName: traefik-proxy
 
       volumes:
       - name: config
         configMap:
-          name: traefik-conf
+          name: traefik-config
       - name: watched
         emptyDir:
 
       initContainers:
-      - name: touch-rules
+      - name: init-touch-rules
         image: bitnami/kubectl:1.21.2
         volumeMounts:
         - mountPath: "/watched"
@@ -37,11 +37,13 @@ spec:
         - "/bin/bash"
         - -c
         args:
+        # this file has to exist before traefik starts
+        # so the watch can be set up properly
         - touch /watched/rules.toml
 
       containers:
       - image: docker.io/traefik:v1.7.30
-        name: traefik-ingress-lb
+        name: traefik-proxy
         volumeMounts:
         - mountPath: "/config"
           name: "config"
@@ -49,12 +51,15 @@ spec:
           name: "watched"
         ports:
         - containerPort: 8080
+          name: http
         - containerPort: 8099
+          name: auth
         args:
         - --web
         - --configfile=/config/traefik.toml
 
-      - image: quay.io/erdii/configmap-puller:0.0.2
+      - image: quay.io/erdii/configmap-puller:dev
+        imagePullPolicy: Always
         name: configmap-puller
         volumeMounts:
         - mountPath: "/watched"

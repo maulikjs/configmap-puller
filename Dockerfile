@@ -14,4 +14,4 @@ RUN CGO_ENABLED=0 go build -o /bin/configmap-puller ./cmd/configmap-puller
 FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /bin/configmap-puller /bin/configmap-puller
-ENTRYPOINT /bin/configmap-puller
+ENTRYPOINT [ "/bin/configmap-puller" ]

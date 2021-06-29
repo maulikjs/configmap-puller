@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: traefik-ingress-controller
+  name: traefik-proxy
   namespace: default
 ---
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: traefik-ingress-controller
+  name: traefik-proxy
 rules:
 - apiGroups:
   - ""
@@ -21,12 +21,12 @@ rules:
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: traefik-ingress-controller
+  name: traefik-proxy
   namespace: default
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: traefik-ingress-controller
+  name: traefik-proxy
 subjects:
 - kind: ServiceAccount
-  name: traefik-ingress-controller
+  name: traefik-proxy
