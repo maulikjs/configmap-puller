@@ -5,11 +5,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -33,7 +35,7 @@ var (
 )
 
 func main() {
-	fmt.Println(os.Args)
+	log.Println(os.Args)
 
 	kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
 	configmapName = flag.String("configmap-name", "traefik-rules", "name of the configmap to watch")
@@ -43,11 +45,12 @@ func main() {
 
 	flag.Parse()
 
-	fmt.Println("kubeconfig", *kubeconfig)
-	fmt.Println("configmapName", *configmapName)
-	fmt.Println("configmapNamespace", *configmapNamespace)
-	fmt.Println("configmapKey", *configmapKey)
-	fmt.Println("outfileName", *outfileName)
+	log.Println("kubeconfig", *kubeconfig)
+	log.Println("configmapName", *configmapName)
+	log.Println("configmapNamespace", *configmapNamespace)
+	log.Println("configmapKey", *configmapKey)
+	log.Println("outfileName", *outfileName)
+	log.Println()
 
 	// load config depending if we are outside or inside a cluster
 	var config *rest.Config
@@ -74,40 +77,76 @@ func main() {
 	namespace := *configmapNamespace
 	name := *configmapName
 
-	run(clientset, name, namespace)
-}
+	ctx := context.Background()
+	errC, dataC, err := watchConfigMap(ctx, clientset, name, namespace)
+	if err != nil {
+		panic(err)
+	}
 
-func run(clientset *kubernetes.Clientset, name, namespace string) {
-	var previousData string
 	for {
-		cm, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-		if errors.IsNotFound(err) {
-			panic(fmt.Sprintf("Configmap %s in namespace %s not found\n", name, namespace))
-		} else if statusError, isStatus := err.(*errors.StatusError); isStatus {
-			panic(fmt.Sprintf("Error getting configmap %s in namespace %s: %v\n",
-				name, namespace, statusError.ErrStatus.Message))
-		} else if err != nil {
-			panic(err.Error())
-		}
-
-		fmt.Printf("Found configmap %s in namespace %s\n", name, namespace)
-		data := cm.Data[*configmapKey]
-		fmt.Printf("Data: %s\n", data)
-
-		// skip iteration if nothing changed
-		if data != previousData {
+		select {
+		case <-ctx.Done():
+			return
+		case err := <-errC:
+			panic(err)
+		case data := <-dataC:
+			log.Println("data:\n", data)
 			if err := writeFile(*outfileName, data); err != nil {
 				panic(err)
 			}
-
-			fmt.Println("Wrote data to file", *outfileName)
-		} else {
-			fmt.Println("nothing changed - not writing file")
+			log.Println("wrote to file:", *outfileName)
+			log.Println()
 		}
-
-		previousData = data
-		time.Sleep(10 * time.Second)
 	}
+}
+
+func watchConfigMap(ctx context.Context, clientset *kubernetes.Clientset, name, namespace string) (<-chan error, <-chan string, error) {
+	watchSub, err := clientset.CoreV1().ConfigMaps(namespace).Watch(ctx, metav1.SingleObject(
+		metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+		},
+	))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ticker := time.NewTicker(1 * time.Minute)
+
+	errChan := make(chan error)
+	dataChan := make(chan string)
+
+	go func() {
+		events := watchSub.ResultChan()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event := <-events:
+				if event.Type != watch.Added && event.Type != watch.Modified {
+					continue
+				}
+				cm := event.Object.(*v1.ConfigMap)
+				dataChan <- getDataFromCM(cm)
+
+			case t := <-ticker.C:
+				log.Println("tick at:", t)
+				timeoutCtx, _ := context.WithTimeout(ctx, 10*time.Second)
+				cm, err := clientset.CoreV1().ConfigMaps(namespace).Get(timeoutCtx, name, metav1.GetOptions{})
+				if err != nil {
+					errChan <- err
+					continue
+				}
+				dataChan <- getDataFromCM(cm)
+			}
+		}
+	}()
+
+	return errChan, dataChan, nil
+}
+
+func getDataFromCM(cm *v1.ConfigMap) string {
+	return cm.Data[*configmapKey]
 }
 
 func writeFile(filename, data string) error {
