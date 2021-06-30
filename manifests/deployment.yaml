@@ -25,7 +25,7 @@ spec:
         configMap:
           name: traefik-config
       - name: watched
-        emptyDir:
+        emptyDir: {}
 
       initContainers:
       - name: init-touch-rules
@@ -55,8 +55,25 @@ spec:
         - containerPort: 8099
           name: auth
         args:
-        - --web
         - --configfile=/config/traefik.toml
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8081
+          failureThreshold: 3
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 8081
+          failureThreshold: 1
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 100m
+            memory: 50Mi
 
       - image: quay.io/erdii/configmap-puller:dev
         imagePullPolicy: Always
@@ -68,3 +85,7 @@ spec:
         - -outfile-name=/watched/rules.toml
         - -configmap-name=traefik-rules
         - -configmap-key=rules.toml
+        resources:
+          limits:
+            cpu: 30m
+            memory: 20Mi

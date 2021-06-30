@@ -8,32 +8,31 @@ data:
       debug = true
       logLevel = "DEBUG"
 
-      # the default entrypoint
       defaultentrypoints = ["http"]
 
-      # the api entrypoint
+      [entryPoints.http]
+      address = ":8080"
+
+      [entryPoints.healthz]
+      address = ":8081"
+
+      [entryPoints.auth_api]
+      address = ":8099"
+
       [api]
       dashboard = true
       entrypoint = "auth_api"
 
-      # websockets protocol
       [wss]
       protocol = "http"
 
-      # the port on localhost where traefik accepts http requests
-      [entryPoints.http]
-      address = ":8080"
-
-      # the port on localhost where the traefik api and dashboard can be found
-      [entryPoints.auth_api]
-      address = ":8099"
-
-      # authenticate the traefik api entrypoint
       [entryPoints.auth_api.auth.basic]
       # abc:123
-      users = [ "abc:$apr1$a4hgl/yM$Dq4i/FSkAzOC7Uj55xEMD/",]
+      users = [ "abc:$apr1$a4hgl/yM$Dq4i/FSkAzOC7Uj55xEMD/", ]
 
-      # the dynamic configuration file
       [file]
       filename = "/watched/rules.toml"
       watch = true
+
+      [ping]
+      entryPoint = "healthz"

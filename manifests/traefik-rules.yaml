@@ -8,7 +8,7 @@ data:
     [backends]
       [backends.backend1]
         [backends.backend1.servers.server1]
-        url = "http://example.com"
+        url = "http://example.com/foo"
         weight = 10
 
     [frontends]
